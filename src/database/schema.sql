@@ -1,106 +1,92 @@
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
+CREATE DATABASE lsms_db;
+USE lsms_db;
 
-
-CREATE TABLE orders (
-  order_id int(11) NOT NULL,
-  user_id int(11) NOT NULL,
-  service_id int(11) NOT NULL,
-  weight decimal(10,2) NOT NULL,
-  total_amount decimal(10,2) NOT NULL,
-  status enum('PENDING','WASHING','READY','CLAIMED') DEFAULT 'PENDING',
-  order_date timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-
-
-INSERT INTO orders (order_id, user_id, service_id, weight, total_amount, status, order_date) VALUES
-(1, 3, 1, 8.00, 80.00, 'READY', '2026-05-17 11:35:11'),
-(2, 3, 1, 5.00, 180.00, 'READY', '2026-05-17 11:45:43');
-
-
-CREATE TABLE services (
-  service_id int(11) NOT NULL,
-  service_type varchar(100) NOT NULL,
-  price decimal(10,2) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-
-INSERT INTO services (service_id, service_type, price) VALUES
-(1, 'wash', 180.00),
-(2, 'Wash & Fold (Standard 8kg)', 180.00),
-(3, 'Wash, Iron & Fold (Premium 8kg)', 320.00),
-(4, 'Express Wash & Fold (Same-day 8kg)', 260.00),
-(5, 'Comforter / Heavy Blanket (Per Piece)', 150.00),
-(6, 'Delicate Wear / Formal Care (Per Piece)', 220.00);
-
-
+-- 1. Users Table --
 CREATE TABLE users (
-  user_id int(11) NOT NULL,
-  username varchar(50) NOT NULL,
-  password varchar(255) NOT NULL,
-  role enum('ADMIN','STAFF','CUSTOMER') NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role ENUM ('ADMIN', 'STAFF', 'CUSTOMER') NOT NULL
+);
 
-
-INSERT INTO users (user_id, username, password, role) VALUES
-(1, 'admin', 'admin123', 'ADMIN'),
-(2, 'austien', 'austien', 'STAFF'),
-(3, 'james', 'james', 'CUSTOMER');
-
-
+-- 2. User Profile (Enforced 1-to-1 Relationship) --
 CREATE TABLE user_profile (
-  profile_id int(11) NOT NULL,
-  user_id int(11) NOT NULL,
-  first_name varchar(50) NOT NULL,
-  middle_name varchar(50) DEFAULT NULL,
-  last_name varchar(50) NOT NULL,
-  suffix varchar(10) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+    profile_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE,
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50),
+    last_name VARCHAR(50) NOT NULL,
+    suffix VARCHAR(10),
+    phone_number VARCHAR(15),
 
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
 
-ALTER TABLE orders
-  ADD PRIMARY KEY (order_id),
-  ADD KEY user_id (user_id),
-  ADD KEY service_id (service_id);
+-- 3. Services Table --
+CREATE TABLE services (
+    service_id INT PRIMARY KEY AUTO_INCREMENT,
+    service_type VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    pricing_unit ENUM('PER_KG', 'PER_PIECE') NOT NULL
+);
 
+-- 4. Orders Table (receipt header) --
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY AUTO_INCREMENT,
+    customer_id INT NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    status ENUM('PENDING', 'WASHING', 'READY', 'CLAIMED') DEFAULT 'PENDING',
+    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-ALTER TABLE services
-  ADD PRIMARY KEY (service_id);
+    FOREIGN KEY (customer_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
 
+-- 5. Order Items (quantity = kg for wash services, or piece count for specialty items) --
+CREATE TABLE order_items (
+    item_id INT PRIMARY KEY AUTO_INCREMENT,
+    order_id INT NOT NULL,
+    service_id INT NOT NULL,
+    quantity DECIMAL(10,2) NOT NULL,
+    price_at_purchase DECIMAL(10,2) NOT NULL,
 
-ALTER TABLE users
-  ADD PRIMARY KEY (user_id),
-  ADD UNIQUE KEY username (username);
+    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+    FOREIGN KEY (service_id) REFERENCES services(service_id) ON DELETE RESTRICT
+);
 
+-- Default admin --
+INSERT INTO users (username, password, role)
+VALUES ('admin', 'admin123', 'ADMIN');
 
-ALTER TABLE user_profile
-  ADD PRIMARY KEY (profile_id),
-  ADD KEY user_id (user_id);
+INSERT INTO user_profile (user_id, first_name, last_name)
+SELECT user_id, 'System', 'Administrator'
+FROM users
+WHERE username = 'admin';
 
+-- Catalog --
+INSERT INTO services (service_type, description, unit_price, pricing_unit) VALUES
+(
+    'Wash, Dry, and Iron (Premium Care)',
+    'Clothes are washed, dried, professionally ironed, and placed on hangers. Perfect for office uniforms, formal wear, and customers who hate ironing.',
+    280.00,
+    'PER_KG'
+),
+(
+    'Comforters & Heavy Blankets (Specialty Item)',
+    'A dedicated cycle for bulky items like thick comforters, duvets, and heavy blankets that won''t fit or dry well in standard home machines.',
+    250.00,
+    'PER_PIECE'
+),
+(
+    'Express Wash and Fold (Speed Service)',
+    'The exact same high-quality care as your standard Wash and Fold, but guaranteed to be finished and ready for pickup within 2 to 3 hours.',
+    300.00,
+    'PER_KG'
+),
+(
+    'Dry Cleaning / Delicate Care (Delicates)',
+    'Specialized solvent-based or ultra-gentle cleaning for sensitive fabrics like silk, wool, leather jackets, or delicate gowns that cannot undergo standard machine washing.',
+    150.00,
+    'PER_PIECE'
+);
 
-ALTER TABLE orders
-  MODIFY order_id int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
-
-ALTER TABLE services
-  MODIFY service_id int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
-
-
-ALTER TABLE users
-  MODIFY user_id int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
-
-
-ALTER TABLE user_profile
-  MODIFY profile_id int(11) NOT NULL AUTO_INCREMENT;
-
-
-ALTER TABLE orders
-  ADD CONSTRAINT orders_ibfk_1 FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
-  ADD CONSTRAINT orders_ibfk_2 FOREIGN KEY (service_id) REFERENCES services (service_id) ON DELETE CASCADE;
-
-
-ALTER TABLE user_profile
-  ADD CONSTRAINT user_profile_ibfk_1 FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE;
-COMMIT;

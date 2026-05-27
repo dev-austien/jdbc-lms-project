@@ -11,19 +11,17 @@ public class DBConnection {
             Class.forName("com.mysql.cj.jdbc.Driver");
 
             Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/lsms_db",
-                "root",
-                ""
+                    "jdbc:mysql://localhost:3306/lsms_db",
+                    "root",
+                    ""
             );
-
-            System.out.println("Database Connected Successfully!");
 
             return conn;
 
         } catch (Exception e) {
 
             System.out.println(
-                "Connection Failed! Check if XAMPP is running and 'lsms_db' exists."
+                    "Connection Failed! Check if XAMPP is running and 'lsms_db' exists."
             );
 
             e.printStackTrace();
