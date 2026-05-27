@@ -1,141 +1,118 @@
-import java.util.*;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
-public class ServiceCrud {
+public final class ServiceCrud {
 
-    // FIX 1: Declare and initialize the Scanner so 'sc' works everywhere in this file
-    private static final Scanner sc = new Scanner(System.in);
+    private static final String LIST_SQL =
+            """
+            SELECT service_id, service_type, description, unit_price, pricing_unit
+            FROM services
+            ORDER BY service_id
+            """;
+
+    private ServiceCrud() {
+    }
 
     public static void addService() {
-        // FIX 2: Declare Connection outside to properly close it later
-        Connection con = null;
-        try {
-            con = DBConnection.getConnection();
+        String type = InputHelper.readLine("Enter service name: ");
+        String description = InputHelper.readLine("Enter description: ");
+        PricingUnit unit = promptPricingUnit();
+        double unitPrice = InputHelper.readDouble("Enter unit price: ");
 
-            System.out.print("Enter Service Type: ");
-            String serviceType = sc.nextLine();
+        String sql =
+                "INSERT INTO services (service_type, description, unit_price, pricing_unit) VALUES (?, ?, ?, ?)";
 
-            System.out.print("Enter Price: ");
-            double price = sc.nextDouble();
-            sc.nextLine(); // FIX 3: Clear the scanner buffer newline character!
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            String sql = "INSERT INTO services(service_type, price) VALUES (?, ?)";
-            PreparedStatement pst = con.prepareStatement(sql);
-
-            pst.setString(1, serviceType);
-            pst.setDouble(2, price);
-
-            pst.executeUpdate();
-            pst.close(); // Close statement
-
-            System.out.println("\nService Added Successfully!");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // FIX 4: Explicitly close connections to avoid memory leaks
-            try { if (con != null) con.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            pstmt.setString(1, type);
+            pstmt.setString(2, description);
+            pstmt.setDouble(3, unitPrice);
+            pstmt.setString(4, unit.name());
+            pstmt.executeUpdate();
+            System.out.println("\nService added successfully.");
+        } catch (SQLException e) {
+            System.out.println("Operation failed: " + e.getMessage());
         }
     }
 
     public static void viewServices() {
-        Connection con = null;
-        try {
-            con = DBConnection.getConnection();
-
-            String sql = "SELECT * FROM services";
-            PreparedStatement pst = con.prepareStatement(sql);
-            ResultSet rs = pst.executeQuery();
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(LIST_SQL);
+             ResultSet rs = pstmt.executeQuery()) {
 
             System.out.println("\n===== SERVICES =====");
+            boolean found = false;
             while (rs.next()) {
-                System.out.println(
-                        rs.getInt("service_id") + " | " +
-                                rs.getString("service_type") + " | " +
-                                rs.getDouble("price")
-                );
+                found = true;
+                printServiceCard(mapRow(rs));
             }
-
-            rs.close();
-            pst.close();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            if (!found) {
+                System.out.println("No services available.");
+            }
+        } catch (SQLException e) {
+            System.out.println("Could not load services: " + e.getMessage());
+            System.out.println("Hint: Update the database — run schema.sql or migrate.sql in src/main/database/");
         }
     }
 
     public static void updateService() {
-        Connection con = null;
-        try {
-            con = DBConnection.getConnection();
+        viewServices();
 
-            // Run display utility method
-            viewServices();
+        int id = InputHelper.readInt("\nEnter service ID to update: ");
+        String type = InputHelper.readLine("Enter new service name: ");
+        String description = InputHelper.readLine("Enter new description: ");
+        PricingUnit unit = promptPricingUnit();
+        double unitPrice = InputHelper.readDouble("Enter new unit price: ");
 
-            System.out.print("\nEnter Service ID to Update: ");
-            int id = sc.nextInt();
-            sc.nextLine(); // Clear buffer
+        String sql =
+                """
+                UPDATE services
+                SET service_type = ?, description = ?, unit_price = ?, pricing_unit = ?
+                WHERE service_id = ?
+                """;
 
-            System.out.print("Enter New Service Type: ");
-            String type = sc.nextLine();
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            System.out.print("Enter New Price: ");
-            double price = sc.nextDouble();
-            sc.nextLine(); // Clear buffer
+            pstmt.setString(1, type);
+            pstmt.setString(2, description);
+            pstmt.setDouble(3, unitPrice);
+            pstmt.setString(4, unit.name());
+            pstmt.setInt(5, id);
 
-            String sql = "UPDATE services SET service_type=?, price=? WHERE service_id=?";
-            PreparedStatement pst = con.prepareStatement(sql);
-
-            pst.setString(1, type);
-            pst.setDouble(2, price);
-            pst.setInt(3, id);
-
-            pst.executeUpdate();
-            pst.close();
-
-            System.out.println("\nService Updated Successfully!");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            if (pstmt.executeUpdate() > 0) {
+                System.out.println("\nService updated successfully.");
+            } else {
+                System.out.println("\nNo service found with that ID.");
+            }
+        } catch (SQLException e) {
+            System.out.println("Update failed: " + e.getMessage());
         }
     }
 
     public static void deleteService() {
-        Connection con = null;
-        try {
-            con = DBConnection.getConnection();
+        viewServices();
 
-            viewServices();
+        int id = InputHelper.readInt("\nEnter service ID to delete: ");
+        String sql = "DELETE FROM services WHERE service_id = ?";
 
-            System.out.print("\nEnter Service ID to Delete: ");
-            int id = sc.nextInt();
-            sc.nextLine(); // Clear buffer
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            String sql = "DELETE FROM services WHERE service_id=?";
-            PreparedStatement pst = con.prepareStatement(sql);
-
-            pst.setInt(1, id);
-
-            pst.executeUpdate();
-            pst.close();
-
-            System.out.println("\nService Deleted Successfully!");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            pstmt.setInt(1, id);
+            pstmt.executeUpdate();
+            System.out.println("\nService deleted successfully.");
+        } catch (SQLException e) {
+            System.out.println(
+                    "\nDelete failed. A service linked to past orders cannot be removed: " + e.getMessage());
         }
     }
 
     public static void serviceMenu() {
-
         while (true) {
-
             System.out.println("\n===== SERVICE MENU =====");
             System.out.println("1. Add Service");
             System.out.println("2. View Services");
@@ -143,35 +120,70 @@ public class ServiceCrud {
             System.out.println("4. Delete Service");
             System.out.println("5. Back");
 
-            System.out.print("Enter Choice: ");
-
-            int choice = sc.nextInt();
-            sc.nextLine();
-
-            switch (choice) {
-
-                case 1:
-                    addService();
-                    break;
-
-                case 2:
-                    viewServices();
-                    break;
-
-                case 3:
-                    updateService();
-                    break;
-
-                case 4:
-                    deleteService();
-                    break;
-
-                case 5:
+            switch (InputHelper.readInt("Enter choice: ")) {
+                case 1 -> addService();
+                case 2 -> viewServices();
+                case 3 -> updateService();
+                case 4 -> deleteService();
+                case 5 -> {
                     return;
-
-                default:
-                    System.out.println("Invalid Choice!");
+                }
+                default -> System.out.println("\nInvalid choice.");
             }
         }
+    }
+
+    static ServiceDetails findService(int serviceId) throws SQLException {
+        String sql =
+                """
+                SELECT service_id, service_type, description, unit_price, pricing_unit
+                FROM services
+                WHERE service_id = ?
+                """;
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, serviceId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+
+        throw new SQLException("Service not found: " + serviceId);
+    }
+
+    private static ServiceDetails mapRow(ResultSet rs) throws SQLException {
+        return new ServiceDetails(
+                rs.getInt("service_id"),
+                rs.getString("service_type"),
+                rs.getString("description"),
+                rs.getDouble("unit_price"),
+                PricingUnit.fromDb(rs.getString("pricing_unit"))
+        );
+    }
+
+    private static void printServiceCard(ServiceDetails service) {
+        System.out.println();
+        System.out.printf("[%d] %s%n", service.serviceId(), service.serviceType());
+        System.out.printf("     Price: %.2f (%s)%n", service.unitPrice(), service.pricingUnit().label());
+        System.out.printf("     %s%n", service.description());
+    }
+
+    private static PricingUnit promptPricingUnit() {
+        System.out.println("\nPricing unit:");
+        System.out.println("1. PER_KG (price per 8 kg — wash / express services)");
+        System.out.println("2. PER_PIECE (price × pieces — comforters, dry cleaning)");
+
+        return switch (InputHelper.readInt("Enter choice: ")) {
+            case 1 -> PricingUnit.PER_KG;
+            case 2 -> PricingUnit.PER_PIECE;
+            default -> {
+                System.out.println("Invalid choice. Defaulting to PER_KG.");
+                yield PricingUnit.PER_KG;
+            }
+        };
     }
 }
